@@ -1,0 +1,62 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: kafka-example-csharp
+  labels:
+    app: kafka-example-csharp
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: kafka-example-csharp
+  template:
+    metadata:
+      labels:
+        app: kafka-example-csharp
+        azure.workload.identity/use: "true"
+    spec:
+      serviceAccountName: <your-service-account>
+      containers:
+        - name: kafka-consumer
+          image: ghcr.io/<your-github-owner>/kafka-example-csharp:latest
+          imagePullPolicy: Always
+          env:
+            - name: Kafka__BootstrapServers
+              value: "kafka-broker.example.com:9094"
+            - name: Kafka__GroupId
+              value: "my-consumer-group"
+            - name: Kafka__Topic
+              value: "my-topic"
+            - name: Kafka__AutoOffsetReset
+              value: "Earliest"
+            - name: Kafka__EnableAutoCommit
+              value: "true"
+            - name: Kafka__Security__SecurityProtocol
+              value: "SaslSsl"
+            - name: Kafka__Security__SaslMechanism
+              value: "OAuthBearer"
+            - name: Kafka__Security__SaslOauthbearerClientId
+              value: "<your-azure-ad-client-id>"
+            - name: Kafka__Security__SaslOauthbearerScope
+              value: "<your-azure-ad-client-id>/.default"
+            - name: Kafka__Ssl__SslEndpointIdentificationAlgorithm
+              value: "Https"
+            - name: Kafka__Ssl__EnableInsecureSsl
+              value: "false"
+            - name: Kafka__Ssl__SslCaLocation
+              value: "/app/certs/ca-kafka.pem"
+          volumeMounts:
+            - name: kafka-ca-cert
+              mountPath: /app/certs
+              readOnly: true
+          resources:
+            requests:
+              memory: "128Mi"
+              cpu: "100m"
+            limits:
+              memory: "512Mi"
+              cpu: "500m"
+      volumes:
+        - name: kafka-ca-cert
+          secret:
+            secretName: kafka-ca-cert

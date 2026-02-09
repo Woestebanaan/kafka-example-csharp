@@ -1,0 +1,10 @@
+bin/
+obj/
+.vs/
+*.user
+*.suo
+*.yaml
+*.pem
+*.txt
+ca-kafka.pem
+appsettings.json

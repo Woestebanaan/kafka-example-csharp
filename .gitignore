@@ -1,0 +1,23 @@
+## .NET
+bin/
+obj/
+*.user
+*.suo
+*.userosscache
+*.sln.docstates
+
+## IDE
+.vs/
+.vscode/
+.idea/
+*.swp
+
+## Secrets and certificates
+appsettings.*.json
+*.pem
+*.pfx
+*.key
+
+## OS
+.DS_Store
+Thumbs.db

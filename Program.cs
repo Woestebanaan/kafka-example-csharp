@@ -10,9 +10,9 @@ var configuration = new ConfigurationBuilder()
 
 var kafka = configuration.GetSection("Kafka");
 
-// Get the scope for the token request
-var clientId = kafka["Security:SaslOauthbearerClientId"];
-var scope = kafka["Security:SaslOauthbearerScope"] ?? $"{clientId}/.default";
+// Get client ID from AZURE_CLIENT_ID (set by Azure Workload Identity or manually)
+var clientId = Environment.GetEnvironmentVariable("AZURE_CLIENT_ID");
+var scope = $"{clientId}/.default";
 
 // Use DefaultAzureCredential which supports:
 // - Workload Identity (when running in Kubernetes with federated credentials)
@@ -46,7 +46,7 @@ using var consumer = new ConsumerBuilder<string, string>(config)
 
             client.OAuthBearerSetToken(
                 tokenValue: token.Token,
-                lifetimeMs: (long)(token.ExpiresOn - DateTimeOffset.UtcNow).TotalMilliseconds,
+                lifetimeMs: token.ExpiresOn.ToUnixTimeMilliseconds(),
                 principalName: clientId);
         }
         catch (Exception ex)

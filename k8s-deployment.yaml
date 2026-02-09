@@ -18,7 +18,7 @@ spec:
       serviceAccountName: <your-service-account>
       containers:
         - name: kafka-consumer
-          image: ghcr.io/<your-github-owner>/kafka-example-csharp:latest
+          image: ghcr.io/woestebanaan/kafka-example-csharp:latest
           imagePullPolicy: Always
           env:
             - name: Kafka__BootstrapServers

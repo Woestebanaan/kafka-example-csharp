@@ -21,6 +21,8 @@ spec:
           image: ghcr.io/woestebanaan/kafka-example-csharp:latest
           imagePullPolicy: Always
           env:
+            - name: AZURE_CLIENT_ID
+              value: "<your-azure-ad-client-id>"
             - name: Kafka__BootstrapServers
               value: "kafka-broker.example.com:9094"
             - name: Kafka__GroupId
@@ -35,10 +37,6 @@ spec:
               value: "SaslSsl"
             - name: Kafka__Security__SaslMechanism
               value: "OAuthBearer"
-            - name: Kafka__Security__SaslOauthbearerClientId
-              value: "<your-azure-ad-client-id>"
-            - name: Kafka__Security__SaslOauthbearerScope
-              value: "<your-azure-ad-client-id>/.default"
             - name: Kafka__Ssl__SslEndpointIdentificationAlgorithm
               value: "Https"
             - name: Kafka__Ssl__EnableInsecureSsl

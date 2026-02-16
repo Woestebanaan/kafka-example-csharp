@@ -1,3 +1,4 @@
+using Azure.Core;
 using Azure.Identity;
 using Confluent.Kafka;
 using Microsoft.Extensions.Configuration;
@@ -10,15 +11,14 @@ var configuration = new ConfigurationBuilder()
 
 var kafka = configuration.GetSection("Kafka");
 
-// Get client ID from AZURE_CLIENT_ID (set by Azure Workload Identity or manually)
 var clientId = Environment.GetEnvironmentVariable("AZURE_CLIENT_ID");
+var tenantId = Environment.GetEnvironmentVariable("AZURE_TENANT_ID");
+var clientSecret = Environment.GetEnvironmentVariable("AZURE_CLIENT_SECRET");
 var scope = $"{clientId}/.default";
 
-// Use DefaultAzureCredential which supports:
-// - Workload Identity (when running in Kubernetes with federated credentials)
-// - Managed Identity (when running in Azure)
-// - Azure CLI, Visual Studio, etc. (for local development)
-var credential = new DefaultAzureCredential();
+TokenCredential credential = (!string.IsNullOrEmpty(tenantId) && !string.IsNullOrEmpty(clientSecret))
+    ? new ClientSecretCredential(tenantId, clientId, clientSecret)
+    : new DefaultAzureCredential();
 
 var config = new ConsumerConfig
 {
@@ -42,7 +42,7 @@ using var consumer = new ConsumerBuilder<string, string>(config)
         {
             // Request token using federated credentials
             var tokenRequestContext = new Azure.Core.TokenRequestContext([scope]);
-            var token = credential.GetToken(tokenRequestContext);
+            var token = credential.GetToken(tokenRequestContext, default);
 
             client.OAuthBearerSetToken(
                 tokenValue: token.Token,

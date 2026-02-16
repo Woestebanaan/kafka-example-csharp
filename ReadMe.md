@@ -217,4 +217,22 @@ For managed Azure services, use Managed Identity:
 |----------|-------------|----------|
 | `AZURE_CLIENT_ID` | App Registration Client ID | Yes (in Kubernetes) |
 | `AZURE_TENANT_ID` | Azure Tenant ID | Yes (in Kubernetes) |
+| `AZURE_CLIENT_SECRET` | Client secret for service principal auth | No (see below) |
 | `AZURE_FEDERATED_TOKEN_FILE` | Path to OIDC token (auto-injected by AKS) | Auto |
+
+### Client Secret Authentication
+
+When `AZURE_TENANT_ID` and `AZURE_CLIENT_SECRET` are set alongside `AZURE_CLIENT_ID`, the application uses `ClientSecretCredential` instead of `DefaultAzureCredential`. This is useful for:
+
+- CI/CD pipelines
+- Non-AKS environments without managed identity
+- Local testing with a service principal
+
+```bash
+export AZURE_CLIENT_ID="<your-client-id>"
+export AZURE_TENANT_ID="<your-tenant-id>"
+export AZURE_CLIENT_SECRET="<your-client-secret>"
+dotnet run
+```
+
+Without `AZURE_CLIENT_SECRET` and `AZURE_TENANT_ID`, the app falls back to `DefaultAzureCredential`.

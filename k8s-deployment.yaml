@@ -23,6 +23,14 @@ spec:
           env:
             - name: AZURE_CLIENT_ID
               value: "<your-azure-ad-client-id>"
+            # Uncomment the following for client secret authentication:
+            # - name: AZURE_TENANT_ID
+            #   value: "<your-azure-tenant-id>"
+            # - name: AZURE_CLIENT_SECRET
+            #   valueFrom:
+            #     secretKeyRef:
+            #       name: azure-client-secret
+            #       key: client-secret
             - name: Kafka__BootstrapServers
               value: "kafka-broker.example.com:9094"
             - name: Kafka__GroupId

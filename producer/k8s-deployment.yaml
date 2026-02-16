@@ -1,24 +1,24 @@
 apiVersion: apps/v1
 kind: Deployment
 metadata:
-  name: kafka-example-csharp
+  name: kafka-example-csharp-producer
   labels:
-    app: kafka-example-csharp
+    app: kafka-example-csharp-producer
 spec:
   replicas: 1
   selector:
     matchLabels:
-      app: kafka-example-csharp
+      app: kafka-example-csharp-producer
   template:
     metadata:
       labels:
-        app: kafka-example-csharp
+        app: kafka-example-csharp-producer
         azure.workload.identity/use: "true"
     spec:
       serviceAccountName: <your-service-account>
       containers:
-        - name: kafka-consumer
-          image: ghcr.io/woestebanaan/kafka-example-csharp:latest
+        - name: kafka-producer
+          image: ghcr.io/woestebanaan/kafka-example-csharp-producer:latest
           imagePullPolicy: Always
           env:
             - name: AZURE_CLIENT_ID
@@ -33,14 +33,8 @@ spec:
             #       key: client-secret
             - name: Kafka__BootstrapServers
               value: "kafka-broker.example.com:9094"
-            - name: Kafka__GroupId
-              value: "my-consumer-group"
             - name: Kafka__Topic
               value: "my-topic"
-            - name: Kafka__AutoOffsetReset
-              value: "Earliest"
-            - name: Kafka__EnableAutoCommit
-              value: "true"
             - name: Kafka__Security__SecurityProtocol
               value: "SaslSsl"
             - name: Kafka__Security__SaslMechanism

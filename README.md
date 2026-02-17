@@ -119,7 +119,18 @@ cd producer && dotnet run
 
 `DefaultAzureCredential` will automatically use your Azure CLI credentials.
 
-### Kubernetes with Workload Identity
+### Kubernetes Deployment
+
+There are two Kubernetes deployment examples for each app, depending on your authentication method:
+
+| Auth Method | Consumer | Producer |
+|---|---|---|
+| Workload Identity | `consumer/k8s-deployment-workload-identity.yaml` | `producer/k8s-deployment-workload-identity.yaml` |
+| Client Secret | `consumer/k8s-deployment-secret.yaml` | `producer/k8s-deployment-secret.yaml` |
+
+#### Option 1: Workload Identity
+
+Uses Azure Workload Identity to authenticate without secrets. The AKS workload identity webhook automatically injects the federated token.
 
 1. **Enable Workload Identity on your AKS cluster:**
 
@@ -143,39 +154,34 @@ metadata:
     azure.workload.identity/client-id: "<your-app-registration-client-id>"
 ```
 
-3. **Deploy your application with the service account:**
+3. **Deploy your application:**
 
-```yaml
-apiVersion: apps/v1
-kind: Deployment
-metadata:
-  name: kafka-consumer
-  namespace: your-namespace
-spec:
-  replicas: 1
-  selector:
-    matchLabels:
-      app: kafka-consumer
-  template:
-    metadata:
-      labels:
-        app: kafka-consumer
-        azure.workload.identity/use: "true"
-    spec:
-      serviceAccountName: kafka-consumer-sa
-      containers:
-        - name: kafka-consumer
-          image: your-registry/kafka-consumer:latest
-          env:
-            - name: AZURE_CLIENT_ID
-              value: "<your-app-registration-client-id>"
-            - name: AZURE_TENANT_ID
-              value: "<your-tenant-id>"
+```bash
+kubectl apply -f consumer/k8s-deployment-workload-identity.yaml
+kubectl apply -f producer/k8s-deployment-workload-identity.yaml
 ```
 
 The workload identity webhook automatically injects:
 - `AZURE_FEDERATED_TOKEN_FILE` - path to the projected service account token
 - Mounts the token at the specified path
+
+#### Option 2: Client Secret
+
+Uses a Kubernetes Secret containing the Azure client secret for authentication. This is useful for non-AKS environments or CI/CD pipelines.
+
+1. **Create the Kubernetes Secret:**
+
+```bash
+kubectl create secret generic azure-client-secret \
+  --from-literal=client-secret="<your-azure-client-secret>"
+```
+
+2. **Deploy your application:**
+
+```bash
+kubectl apply -f consumer/k8s-deployment-secret.yaml
+kubectl apply -f producer/k8s-deployment-secret.yaml
+```
 
 ### Azure Container Apps / App Service
 

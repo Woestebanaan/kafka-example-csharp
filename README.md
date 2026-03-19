@@ -17,6 +17,10 @@
 
 ### appsettings.json
 
+The producer and consumer each have their own `appsettings.json`. The producer also supports [.NET user secrets](https://learn.microsoft.com/en-us/aspnet/core/security/app-secrets) for local development.
+
+**Consumer `appsettings.json`:**
+
 ```json
 {
   "Kafka": {
@@ -39,6 +43,28 @@
   }
 }
 ```
+
+**Producer `appsettings.json`:**
+
+```json
+{
+  "Kafka": {
+    "BootstrapServers": "your-kafka-broker:9094",
+    "Topic": "your-topic",
+    "Key": "",
+    "Security": {
+      "SecurityProtocol": "SaslSsl",
+      "SaslMechanism": "OAuthBearer"
+    },
+    "Ssl": {
+      "SslCaLocation": "ca-kafka.pem",
+      "EnableInsecureSsl": "false"
+    }
+  }
+}
+```
+
+The `Key` field sets the Kafka message key. Leave it empty to use no key.
 
 ## Configuring Azure Entra ID
 
@@ -118,6 +144,13 @@ cd producer && dotnet run
 ```
 
 `DefaultAzureCredential` will automatically use your Azure CLI credentials.
+
+The producer also supports [.NET user secrets](https://learn.microsoft.com/en-us/aspnet/core/security/app-secrets) for storing sensitive config locally without committing it:
+
+```bash
+cd producer
+dotnet user-secrets set "AZURE_CLIENT_SECRET" "<your-secret>"
+```
 
 ### Kubernetes Deployment
 
@@ -236,7 +269,7 @@ For managed Azure services, use Managed Identity:
 
 ### Client Secret Authentication
 
-When `AZURE_TENANT_ID` and `AZURE_CLIENT_SECRET` are set alongside `AZURE_CLIENT_ID`, the application uses `ClientSecretCredential` instead of `DefaultAzureCredential`. This is useful for:
+When `AZURE_CLIENT_SECRET` is set alongside `AZURE_CLIENT_ID` and `AZURE_TENANT_ID`, the application uses `ClientSecretCredential` instead of `DefaultAzureCredential`. This is useful for:
 
 - CI/CD pipelines
 - Non-AKS environments without managed identity
@@ -249,4 +282,4 @@ export AZURE_CLIENT_SECRET="<your-client-secret>"
 dotnet run
 ```
 
-Without `AZURE_CLIENT_SECRET` and `AZURE_TENANT_ID`, the app falls back to `DefaultAzureCredential`.
+Without `AZURE_CLIENT_SECRET`, the app falls back to `DefaultAzureCredential`.

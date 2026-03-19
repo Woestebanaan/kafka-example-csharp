@@ -1,91 +1,71 @@
-using Azure.Core;
 using Azure.Identity;
 using Confluent.Kafka;
 using Microsoft.Extensions.Configuration;
 
-var configuration = new ConfigurationBuilder()
+var config = new ConfigurationBuilder()
     .SetBasePath(Directory.GetCurrentDirectory())
-    .AddJsonFile("appsettings.json", optional: true, reloadOnChange: true)
+    .AddJsonFile("appsettings.json", optional: true)
     .AddEnvironmentVariables()
+    .AddUserSecrets<Program>()
     .Build();
 
-var kafka = configuration.GetSection("Kafka");
+var kafka = config.GetSection("Kafka");
+var clientId = config["AZURE_CLIENT_ID"];
+var tenantId = config["AZURE_TENANT_ID"];
+var clientSecret = config["AZURE_CLIENT_SECRET"];
 
-var clientId = Environment.GetEnvironmentVariable("AZURE_CLIENT_ID");
-var tenantId = Environment.GetEnvironmentVariable("AZURE_TENANT_ID");
-var clientSecret = Environment.GetEnvironmentVariable("AZURE_CLIENT_SECRET");
-var scope = $"{clientId}/.default";
-
-TokenCredential credential = (!string.IsNullOrEmpty(tenantId) && !string.IsNullOrEmpty(clientSecret))
+var credential = !string.IsNullOrEmpty(clientSecret)
     ? new ClientSecretCredential(tenantId, clientId, clientSecret)
-    : new DefaultAzureCredential();
+    : (Azure.Core.TokenCredential)new DefaultAzureCredential();
 
-var config = new ProducerConfig
+using var cts = new CancellationTokenSource();
+Console.CancelKeyPress += (_, e) => { e.Cancel = true; cts.Cancel(); };
+
+using var producer = new ProducerBuilder<string, string>(new ProducerConfig
 {
     BootstrapServers = kafka["BootstrapServers"],
     SecurityProtocol = Enum.Parse<SecurityProtocol>(kafka["Security:SecurityProtocol"] ?? "SaslSsl"),
     SaslMechanism = Enum.Parse<SaslMechanism>(kafka["Security:SaslMechanism"] ?? "OAuthBearer"),
-    SslEndpointIdentificationAlgorithm = Enum.Parse<SslEndpointIdentificationAlgorithm>(kafka["Ssl:SslEndpointIdentificationAlgorithm"] ?? "None"),
     SslCaLocation = kafka["Ssl:SslCaLocation"] is { Length: > 0 } ca ? ca : null,
     EnableSslCertificateVerification = !bool.TryParse(kafka["Ssl:EnableInsecureSsl"], out var insecure) || !insecure
-};
+    // Debug = "all"
+})
+.SetOAuthBearerTokenRefreshHandler((client, _) =>
+{
+    try
+    {
+        var token = credential.GetToken(new([$"{clientId}/.default"]), default);
+        client.OAuthBearerSetToken(token.Token, token.ExpiresOn.ToUnixTimeMilliseconds(), clientId);
+    }
+    catch (Exception ex)
+    {
+        client.OAuthBearerSetTokenFailure(ex.Message);
+    }
+})
+.Build();
 
 var topic = kafka["Topic"] ?? "my-topic";
-
-using var producer = new ProducerBuilder<string, string>(config)
-    .SetOAuthBearerTokenRefreshHandler((client, _) =>
-    {
-        try
-        {
-            var tokenRequestContext = new Azure.Core.TokenRequestContext([scope]);
-            var token = credential.GetToken(tokenRequestContext, default);
-
-            client.OAuthBearerSetToken(
-                tokenValue: token.Token,
-                lifetimeMs: token.ExpiresOn.ToUnixTimeMilliseconds(),
-                principalName: clientId);
-        }
-        catch (Exception ex)
-        {
-            client.OAuthBearerSetTokenFailure(ex.Message);
-        }
-    })
-    .Build();
-
-using var cts = new CancellationTokenSource();
-
-Console.WriteLine($"Producing to topic: {topic}");
-Console.WriteLine("Publishing current time every second... Press Ctrl+C to exit.");
-
-Console.CancelKeyPress += (_, e) => { e.Cancel = true; cts.Cancel(); };
+Console.WriteLine($"Producing to topic: {topic}. Press Ctrl+C to exit.");
 
 try
 {
     while (!cts.Token.IsCancellationRequested)
     {
         var message = DateTime.UtcNow.ToString("o");
-        try
+        var result = await producer.ProduceAsync(topic, new Message<string, string>
         {
-            var result = await producer.ProduceAsync(topic, new Message<string, string>
-            {
-                Key = Environment.MachineName,
-                Value = message
-            }, cts.Token);
+            Key = kafka["Key"],
+            Value = message
+        }, cts.Token);
 
-            Console.WriteLine($"Produced message to {result.TopicPartitionOffset}: {message}");
-        }
-        catch (ProduceException<string, string> e)
-        {
-            Console.WriteLine($"Produce error: {e.Error.Reason}");
-        }
-
+        Console.WriteLine($"[{result.TopicPartitionOffset}] {message}");
         await Task.Delay(1000, cts.Token);
     }
 }
-catch (OperationCanceledException)
+catch (OperationCanceledException) { }
+catch (ProduceException<string, string> e)
 {
-    Console.WriteLine("\nClosing producer...");
+    Console.WriteLine($"Produce error: {e.Error.Reason}");
 }
 
 producer.Flush(TimeSpan.FromSeconds(10));
-Console.WriteLine("Producer closed.");

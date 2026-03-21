@@ -17,6 +17,7 @@ appsettings.*.json
 *.pem
 *.pfx
 *.key
+*.crt
 
 ## OS
 .DS_Store

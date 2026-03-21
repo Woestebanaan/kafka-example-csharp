@@ -1,6 +1,6 @@
 # Kafka Consumer & Producer Example (C#)
 
-.NET 9 Kafka consumer and producer apps that use Azure Entra ID (formerly Azure AD) with federated credentials for authentication.
+.NET 10 Kafka producer app. Supports mutual TLS (mTLS) and Azure Entra ID (OAuthBearer) authentication.
 
 ## Project Structure
 
@@ -9,9 +9,9 @@
 
 ## Prerequisites
 
-- .NET 9 SDK
-- Azure CLI (for local development)
-- Access to an Azure Entra ID tenant
+- .NET 10 SDK
+- `kubectl` access to the cluster (for local development with mTLS)
+- Azure CLI (for local development with OAuthBearer)
 
 ## Configuration
 
@@ -63,6 +63,32 @@ The producer and consumer each have their own `appsettings.json`. The producer a
   }
 }
 ```
+
+**Producer `appsettings.json` (mTLS):**
+
+For mutual TLS, set `SecurityProtocol` to `Ssl` and provide the client certificate and key. The OAuthBearer handler is skipped automatically.
+
+```json
+{
+  "Kafka": {
+    "BootstrapServers": "your-kafka-broker:9093",
+    "Topic": "your-topic",
+    "Key": "",
+    "Security": {
+      "SecurityProtocol": "Ssl"
+    },
+    "Ssl": {
+      "SslCaLocation": "ca-kafka.pem",
+      "SslCertificateLocation": "client.pem",
+      "SslKeyLocation": "client.key",
+      "SslKeyPassword": "",
+      "EnableInsecureSsl": "false"
+    }
+  }
+}
+```
+
+mTLS can also be combined with SASL (`SecurityProtocol: SaslSsl`) — in that case both `SslCertificateLocation`/`SslKeyLocation` and the OAuthBearer handler are active simultaneously.
 
 The `Key` field sets the Kafka message key. Leave it empty to use no key.
 
@@ -125,21 +151,97 @@ Ensure your App Registration has the necessary permissions to access Kafka:
 
 ## Running the Application
 
-### Local Development
+### Local Setup (Producer)
 
-For local development, authenticate using Azure CLI:
+**1. Clone the repo and restore dependencies:**
 
 ```bash
-# Login to Azure
+git clone <repo-url>
+cd kafka-example-csharp/producer
+dotnet restore
+```
+
+**2. Create `appsettings.Development.json`:**
+
+This file is gitignored. Create it in `producer/` with your local settings:
+
+```json
+{
+  "HealthPort": "8081",
+  "Kafka": {
+    "BootstrapServers": "localhost:9093",
+    "Topic": "example-topic",
+    "Key": "",
+    "Security": {
+      "SecurityProtocol": "Ssl"
+    },
+    "Ssl": {
+      "SslCaLocation": "ca.crt",
+      "SslCertificateLocation": "client.pem",
+      "SslKeyLocation": "client.key",
+      "EnableInsecureSsl": "true"
+    }
+  }
+}
+```
+
+**3. Extract the TLS certificates from the cluster** (mTLS only):
+
+```bash
+kubectl get secret csharp-example-client-cert -n kafka -o jsonpath='{.data.tls\.crt}' | base64 -d > client.pem
+kubectl get secret csharp-example-client-cert -n kafka -o jsonpath='{.data.tls\.key}' | base64 -d > client.key
+kubectl get secret kafka-brokers-cert -n kafka -o jsonpath='{.data.ca\.crt}' | base64 -d > ca.crt
+```
+
+These files are gitignored and must be re-extracted if the certs are rotated.
+
+**4. Port-forward the Kafka bootstrap service** (keep running in a separate terminal):
+
+```bash
+kubectl port-forward svc/kafka-cluster-kafka-bootstrap -n kafka 9093:9093
+```
+
+**5. Run:**
+
+```bash
+DOTNET_ENVIRONMENT=Development dotnet run
+```
+
+### Local Development
+
+The producer loads `appsettings.Development.json` on top of `appsettings.json` when `DOTNET_ENVIRONMENT=Development` is set, making it easy to override settings without touching the base config.
+
+#### mTLS (recommended)
+
+1. **Extract the client certificate and broker CA from the cluster:**
+
+```bash
+kubectl get secret csharp-example-client-cert -n kafka -o jsonpath='{.data.tls\.crt}' | base64 -d > producer/client.pem
+kubectl get secret csharp-example-client-cert -n kafka -o jsonpath='{.data.tls\.key}' | base64 -d > producer/client.key
+kubectl get secret kafka-brokers-cert -n kafka -o jsonpath='{.data.ca\.crt}' | base64 -d > producer/ca.crt
+```
+
+2. **Port-forward the Kafka bootstrap service** (keep running in a separate terminal):
+
+```bash
+kubectl port-forward svc/kafka-cluster-kafka-bootstrap -n kafka 9093:9093
+```
+
+3. **Run the producer:**
+
+```bash
+cd producer
+DOTNET_ENVIRONMENT=Development dotnet run
+```
+
+`appsettings.Development.json` configures `SecurityProtocol: Ssl` with the cert paths above and sets `EnableInsecureSsl: true` to skip hostname verification (the broker cert won't have `localhost` as a SAN).
+
+#### OAuthBearer (Azure Entra ID)
+
+Authenticate using Azure CLI:
+
+```bash
 az login
-
-# Verify you're logged in
-az account show
-
-# Run the consumer
-cd consumer && dotnet run
-
-# Run the producer
 cd producer && dotnet run
 ```
 
@@ -160,6 +262,7 @@ There are two Kubernetes deployment examples for each app, depending on your aut
 |---|---|---|
 | Workload Identity | `consumer/k8s-deployment-workload-identity.yaml` | `producer/k8s-deployment-workload-identity.yaml` |
 | Client Secret | `consumer/k8s-deployment-secret.yaml` | `producer/k8s-deployment-secret.yaml` |
+| mTLS | — | `producer/k8s-deployment-mtls.yaml` |
 
 #### Option 1: Workload Identity
 
@@ -274,12 +377,17 @@ The producer uses a fail-fast strategy suited for Kubernetes:
 
 ## Environment Variables
 
-| Variable | Description | Required |
-|----------|-------------|----------|
-| `AZURE_CLIENT_ID` | App Registration Client ID | Yes (in Kubernetes) |
-| `AZURE_TENANT_ID` | Azure Tenant ID | Yes (in Kubernetes) |
-| `AZURE_CLIENT_SECRET` | Client secret for service principal auth | No (see below) |
-| `AZURE_FEDERATED_TOKEN_FILE` | Path to OIDC token (auto-injected by AKS) | Auto |
+| Variable | Description | Default |
+|----------|-------------|---------|
+| `DOTNET_ENVIRONMENT` | Set to `Development` to load `appsettings.Development.json` | `Production` |
+| `HealthPort` | Port for `/live` and `/ready` health endpoints | `8080` |
+| `AZURE_CLIENT_ID` | App Registration Client ID (OAuthBearer) | — |
+| `AZURE_TENANT_ID` | Azure Tenant ID (OAuthBearer) | — |
+| `AZURE_CLIENT_SECRET` | Client secret for service principal auth (OAuthBearer) | — |
+| `AZURE_FEDERATED_TOKEN_FILE` | Path to OIDC token, auto-injected by AKS Workload Identity | — |
+| `Kafka__Ssl__SslCertificateLocation` | Path to client certificate PEM (mTLS) | — |
+| `Kafka__Ssl__SslKeyLocation` | Path to client private key PEM (mTLS) | — |
+| `Kafka__Ssl__SslKeyPassword` | Password for the client private key (mTLS) | — |
 
 ### Client Secret Authentication
 

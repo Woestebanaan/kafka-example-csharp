@@ -1,0 +1,78 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: kafka-example-csharp-producer
+  labels:
+    app: kafka-example-csharp-producer
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: kafka-example-csharp-producer
+  template:
+    metadata:
+      labels:
+        app: kafka-example-csharp-producer
+    spec:
+      terminationGracePeriodSeconds: 30
+      containers:
+        - name: kafka-producer
+          image: ghcr.io/woestebanaan/kafka-example-csharp-producer:latest
+          imagePullPolicy: Always
+          env:
+            - name: Kafka__BootstrapServers
+              value: "kafka-broker.example.com:9093"
+            - name: Kafka__Topic
+              value: "my-topic"
+            - name: Kafka__Key
+              value: ""
+            - name: Kafka__Security__SecurityProtocol
+              value: "Ssl"
+            - name: Kafka__Ssl__EnableInsecureSsl
+              value: "false"
+            - name: Kafka__Ssl__SslCaLocation
+              value: "/app/certs/ca-kafka.pem"
+            - name: Kafka__Ssl__SslCertificateLocation
+              value: "/app/certs/client.pem"
+            - name: Kafka__Ssl__SslKeyLocation
+              value: "/app/certs/client.key"
+            - name: Kafka__Ssl__SslKeyPassword
+              valueFrom:
+                secretKeyRef:
+                  name: kafka-mtls-cert
+                  key: key-password
+                  optional: true
+          volumeMounts:
+            - name: kafka-mtls-cert
+              mountPath: /app/certs
+              readOnly: true
+          resources:
+            requests:
+              memory: "128Mi"
+              cpu: "100m"
+            limits:
+              memory: "512Mi"
+              cpu: "500m"
+          ports:
+            - containerPort: 8080
+              name: health
+          livenessProbe:
+            httpGet:
+              path: /live
+              port: 8080
+            initialDelaySeconds: 20
+            periodSeconds: 15
+            failureThreshold: 4
+            timeoutSeconds: 5
+          readinessProbe:
+            httpGet:
+              path: /ready
+              port: 8080
+            initialDelaySeconds: 15
+            periodSeconds: 10
+            failureThreshold: 3
+            timeoutSeconds: 5
+      volumes:
+        - name: kafka-mtls-cert
+          secret:
+            secretName: kafka-mtls-cert

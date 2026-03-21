@@ -239,6 +239,20 @@ For managed Azure services, use Managed Identity:
 +-------------------+     +-------------------+     +-------------------+
 ```
 
+## Error Handling & Kubernetes Restart Behaviour
+
+The producer uses a fail-fast strategy suited for Kubernetes:
+
+| Condition | Behaviour |
+|-----------|-----------|
+| Auth failure | Logged to stderr; retried by rdkafka |
+| 3 consecutive auth failures | Exits with code **1** → Kubernetes restarts the pod |
+| Produce error | Retried with exponential backoff (1 s → 2 s → 4 s … max 30 s) |
+| 5 consecutive produce errors | Exits with code **1** → Kubernetes restarts the pod |
+| Ctrl+C / SIGTERM | Flushes producer and exits with code **0** |
+
+`terminationGracePeriodSeconds: 30` in the deployment gives the producer time to flush pending messages before Kubernetes force-kills the container.
+
 ## Troubleshooting
 
 ### "AADSTS70021: No matching federated identity record found"

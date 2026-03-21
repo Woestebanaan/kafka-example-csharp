@@ -16,6 +16,7 @@ spec:
         azure.workload.identity/use: "true"
     spec:
       serviceAccountName: <your-service-account>
+      terminationGracePeriodSeconds: 30
       containers:
         - name: kafka-producer
           image: ghcr.io/woestebanaan/kafka-example-csharp-producer:latest
@@ -33,8 +34,6 @@ spec:
               value: "SaslSsl"
             - name: Kafka__Security__SaslMechanism
               value: "OAuthBearer"
-            - name: Kafka__Ssl__SslEndpointIdentificationAlgorithm
-              value: "Https"
             - name: Kafka__Ssl__EnableInsecureSsl
               value: "false"
             - name: Kafka__Ssl__SslCaLocation
@@ -50,6 +49,25 @@ spec:
             limits:
               memory: "512Mi"
               cpu: "500m"
+          ports:
+            - containerPort: 8080
+              name: health
+          livenessProbe:
+            httpGet:
+              path: /live
+              port: 8080
+            initialDelaySeconds: 20
+            periodSeconds: 15
+            failureThreshold: 4
+            timeoutSeconds: 5
+          readinessProbe:
+            httpGet:
+              path: /ready
+              port: 8080
+            initialDelaySeconds: 15
+            periodSeconds: 10
+            failureThreshold: 3
+            timeoutSeconds: 5
       volumes:
         - name: kafka-ca-cert
           secret:

@@ -1,68 +1,43 @@
-using Azure.Core;
 using Azure.Identity;
 using Confluent.Kafka;
+using KafkaConsumer.Configuration;
+using KafkaConsumer.Health;
+using KafkaConsumer.Kafka;
 using Microsoft.Extensions.Configuration;
+using System.Runtime.InteropServices;
 
-var configuration = new ConfigurationBuilder()
+var environment = Environment.GetEnvironmentVariable("DOTNET_ENVIRONMENT") ?? "Production";
+
+var config = new ConfigurationBuilder()
     .SetBasePath(Directory.GetCurrentDirectory())
-    .AddJsonFile("appsettings.json", optional: true, reloadOnChange: true)
+    .AddJsonFile("appsettings.json", optional: true)
+    .AddJsonFile($"appsettings.{environment}.json", optional: true)
     .AddEnvironmentVariables()
     .Build();
 
-var kafka = configuration.GetSection("Kafka");
+var kafkaOptions = config.GetSection("Kafka").Get<KafkaOptions>() ?? new KafkaOptions();
 
-var clientId = Environment.GetEnvironmentVariable("AZURE_CLIENT_ID");
-var tenantId = Environment.GetEnvironmentVariable("AZURE_TENANT_ID");
-var clientSecret = Environment.GetEnvironmentVariable("AZURE_CLIENT_SECRET");
-var scope = $"{clientId}/.default";
+var clientId     = config["AZURE_CLIENT_ID"];
+var tenantId     = config["AZURE_TENANT_ID"];
+var clientSecret = config["AZURE_CLIENT_SECRET"];
 
-TokenCredential credential = (!string.IsNullOrEmpty(tenantId) && !string.IsNullOrEmpty(clientSecret))
+var credential = !string.IsNullOrEmpty(clientSecret)
     ? new ClientSecretCredential(tenantId, clientId, clientSecret)
-    : new DefaultAzureCredential();
-
-var config = new ConsumerConfig
-{
-    BootstrapServers = kafka["BootstrapServers"],
-    GroupId = kafka["GroupId"],
-    AutoOffsetReset = Enum.Parse<AutoOffsetReset>(kafka["AutoOffsetReset"] ?? "Earliest"),
-    EnableAutoCommit = bool.Parse(kafka["EnableAutoCommit"] ?? "true"),
-    SecurityProtocol = Enum.Parse<SecurityProtocol>(kafka["Security:SecurityProtocol"] ?? "SaslSsl"),
-    SaslMechanism = Enum.Parse<SaslMechanism>(kafka["Security:SaslMechanism"] ?? "OAuthBearer"),
-    SslEndpointIdentificationAlgorithm = Enum.Parse<SslEndpointIdentificationAlgorithm>(kafka["Ssl:SslEndpointIdentificationAlgorithm"] ?? "None"),
-    SslCaLocation = kafka["Ssl:SslCaLocation"] is { Length: > 0 } ca ? ca : null,
-    EnableSslCertificateVerification = !bool.TryParse(kafka["Ssl:EnableInsecureSsl"], out var insecure) || !insecure
-};
-
-var topic = kafka["Topic"] ?? "my-topic";
-
-using var consumer = new ConsumerBuilder<string, string>(config)
-    .SetOAuthBearerTokenRefreshHandler((client, _) =>
-    {
-        try
-        {
-            // Request token using federated credentials
-            var tokenRequestContext = new Azure.Core.TokenRequestContext([scope]);
-            var token = credential.GetToken(tokenRequestContext, default);
-
-            client.OAuthBearerSetToken(
-                tokenValue: token.Token,
-                lifetimeMs: token.ExpiresOn.ToUnixTimeMilliseconds(),
-                principalName: clientId);
-        }
-        catch (Exception ex)
-        {
-            client.OAuthBearerSetTokenFailure(ex.Message);
-        }
-    })
-    .Build();
+    : (Azure.Core.TokenCredential)new DefaultAzureCredential();
 
 using var cts = new CancellationTokenSource();
-
-consumer.Subscribe(topic);
-Console.WriteLine($"Subscribed to topic: {topic}");
-Console.WriteLine("Waiting for messages... Press Ctrl+C to exit.");
-
 Console.CancelKeyPress += (_, e) => { e.Cancel = true; cts.Cancel(); };
+using var sigterm = PosixSignalRegistration.Create(PosixSignal.SIGTERM, ctx => { ctx.Cancel = true; cts.Cancel(); });
+
+var health = new HealthState();
+using var healthServer = new HealthServer(config["HealthPort"] ?? "8080", health);
+healthServer.Start();
+
+using var consumer = KafkaConsumerFactory.Create(kafkaOptions, credential, clientId);
+
+consumer.Subscribe(kafkaOptions.Topic);
+Console.WriteLine($"Subscribed to topic: {kafkaOptions.Topic}");
+Console.WriteLine("Waiting for messages... Press Ctrl+C to exit.");
 
 try
 {
@@ -75,15 +50,17 @@ try
             {
                 Console.WriteLine($"""
                     Received message at {result.TopicPartitionOffset}:
-                      Key: {result.Message.Key}
-                      Value: {result.Message.Value}
+                      Key:       {result.Message.Key}
+                      Value:     {result.Message.Value}
                       Timestamp: {result.Message.Timestamp.UtcDateTime}
                     """);
+                health.IsReady = true;
+                health.MarkAlive();
             }
         }
-        catch (ConsumeException e)
+        catch (ConsumeException ex)
         {
-            Console.WriteLine($"Consume error: {e.Error.Reason}");
+            Console.Error.WriteLine($"[CONSUME] Error: {ex.Error.Reason}");
         }
     }
 }

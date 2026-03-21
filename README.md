@@ -204,7 +204,7 @@ kubectl port-forward svc/kafka-cluster-kafka-bootstrap -n kafka 9093:9093
 **5. Run:**
 
 ```bash
-DOTNET_ENVIRONMENT=Development dotnet run
+dotnet run --launch-profile Development
 ```
 
 ### Local Development

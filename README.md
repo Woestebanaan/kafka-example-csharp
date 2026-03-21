@@ -258,11 +258,11 @@ dotnet user-secrets set "AZURE_CLIENT_SECRET" "<your-secret>"
 
 There are two Kubernetes deployment examples for each app, depending on your authentication method:
 
-| Auth Method | Consumer | Producer |
-|---|---|---|
+| Auth Method       | Consumer                                         | Producer                                         |
+|-------------------|--------------------------------------------------|--------------------------------------------------|
 | Workload Identity | `consumer/k8s-deployment-workload-identity.yaml` | `producer/k8s-deployment-workload-identity.yaml` |
-| Client Secret | `consumer/k8s-deployment-secret.yaml` | `producer/k8s-deployment-secret.yaml` |
-| mTLS | — | `producer/k8s-deployment-mtls.yaml` |
+| Client Secret     | `consumer/k8s-deployment-secret.yaml`            | `producer/k8s-deployment-secret.yaml`            |
+| mTLS              | `consumer/k8s-deployment-mtls.yaml`              | `producer/k8s-deployment-mtls.yaml`              |
 
 #### Option 1: Workload Identity
 
@@ -346,13 +346,13 @@ For managed Azure services, use Managed Identity:
 
 The producer uses a fail-fast strategy suited for Kubernetes:
 
-| Condition | Behaviour |
-|-----------|-----------|
-| Auth failure | Logged to stderr; retried by rdkafka |
-| 3 consecutive auth failures | Exits with code **1** → Kubernetes restarts the pod |
-| Produce error | Retried with exponential backoff (1 s → 2 s → 4 s … max 30 s) |
-| 5 consecutive produce errors | Exits with code **1** → Kubernetes restarts the pod |
-| Ctrl+C / SIGTERM | Flushes producer and exits with code **0** |
+| Condition                    | Behaviour                                                     |
+|------------------------------|---------------------------------------------------------------|
+| Auth failure                 | Logged to stderr; retried by rdkafka                          |
+| 3 consecutive auth failures  | Exits with code **1** → Kubernetes restarts the pod           |
+| Produce error                | Retried with exponential backoff (1 s → 2 s → 4 s … max 30 s) |
+| 5 consecutive produce errors | Exits with code **1** → Kubernetes restarts the pod           |
+| Ctrl+C / SIGTERM             | Flushes producer and exits with code **0**                    |
 
 `terminationGracePeriodSeconds: 30` in the deployment gives the producer time to flush pending messages before Kubernetes force-kills the container.
 
@@ -377,17 +377,17 @@ The producer uses a fail-fast strategy suited for Kubernetes:
 
 ## Environment Variables
 
-| Variable | Description | Default |
-|----------|-------------|---------|
-| `DOTNET_ENVIRONMENT` | Set to `Development` to load `appsettings.Development.json` | `Production` |
-| `HealthPort` | Port for `/live` and `/ready` health endpoints | `8080` |
-| `AZURE_CLIENT_ID` | App Registration Client ID (OAuthBearer) | — |
-| `AZURE_TENANT_ID` | Azure Tenant ID (OAuthBearer) | — |
-| `AZURE_CLIENT_SECRET` | Client secret for service principal auth (OAuthBearer) | — |
-| `AZURE_FEDERATED_TOKEN_FILE` | Path to OIDC token, auto-injected by AKS Workload Identity | — |
-| `Kafka__Ssl__SslCertificateLocation` | Path to client certificate PEM (mTLS) | — |
-| `Kafka__Ssl__SslKeyLocation` | Path to client private key PEM (mTLS) | — |
-| `Kafka__Ssl__SslKeyPassword` | Password for the client private key (mTLS) | — |
+| Variable                             | Description                                                 | Default      |
+|--------------------------------------|-------------------------------------------------------------|--------------|
+| `DOTNET_ENVIRONMENT`                 | Set to `Development` to load `appsettings.Development.json` | `Production` |
+| `HealthPort`                         | Port for `/live` and `/ready` health endpoints              | `8080`       |
+| `AZURE_CLIENT_ID`                    | App Registration Client ID (OAuthBearer)                    | —            |
+| `AZURE_TENANT_ID`                    | Azure Tenant ID (OAuthBearer)                               | —            |
+| `AZURE_CLIENT_SECRET`                | Client secret for service principal auth (OAuthBearer)      | —            |
+| `AZURE_FEDERATED_TOKEN_FILE`         | Path to OIDC token, auto-injected by AKS Workload Identity  | —            |
+| `Kafka__Ssl__SslCertificateLocation` | Path to client certificate PEM (mTLS)                       | —            |
+| `Kafka__Ssl__SslKeyLocation`         | Path to client private key PEM (mTLS)                       | —            |
+| `Kafka__Ssl__SslKeyPassword`         | Password for the client private key (mTLS)                  | —            |
 
 ### Client Secret Authentication
 
